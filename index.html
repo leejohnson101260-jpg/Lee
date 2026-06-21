@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Amostra de Cor Digital</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Amostra de Cor">
+<meta name="theme-color" content="#7a9a3a">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+<!-- jsPDF 2.5.1 (local file, no internet needed on iOS) -->
+<script src="jspdf.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="logo">Amostra de Cor Digital</div>
+  <div class="tag">COLOR · GRADIENT · TRANSPARENCY</div>
+</header>
+
+<!-- STEP 1: capture -->
+<section id="step-capture">
+  <div class="drop" id="drop">
+    <div class="icon">📷</div>
+    <h2>TIRAR FOTO OU ENVIAR</h2>
+    <p>Abre a câmera ou a galeria de fotos</p>
+    <p>Toque novamente para trocar a imagem</p>
+  </div>
+  <input type="file" id="file" accept="image/*" class="hidden">
+  <p class="hint">Tire ou envie a foto de uma lente para começar</p>
+  <p class="hint err" id="capStatus"></p>
+</section>
+
+<!-- STEP 2: trace & adjust -->
+<section id="step-isolate" class="hidden">
+  <div class="card">
+    <h3>Contorno da lente</h3>
+    <p class="note" id="traceNote">Detectando contorno…</p>
+    <div class="canvas-wrap" id="cwrap">
+      <canvas id="cv"></canvas>
+    </div>
+    <div class="toolbar">
+      <button class="ghost" id="btnRetrace">Re-detectar</button>
+      <button class="ghost" id="btnSmaller">− Menor</button>
+      <button class="ghost" id="btnBigger">+ Maior</button>
+    </div>
+    <div class="toolbar">
+      <button id="btnAnalyze">Analisar lente</button>
+    </div>
+  </div>
+</section>
+
+<!-- STEP 3: results -->
+<section id="step-results" class="hidden">
+  <div class="card">
+    <h3>Resultado</h3>
+    <div class="typebox" id="typeLabel">—</div>
+    <div id="solidBox">
+      <div class="swatch" id="solidSwatch"></div>
+      <div class="note" id="colorSource" style="margin-top:8px;">Cor medida da lente.</div>
+      <div class="grid">
+        <div class="stat"><div class="k">HEX</div><div class="v" id="sHex">—</div></div>
+        <div class="stat"><div class="k">RGB</div><div class="v" id="sRgb">—</div></div>
+        <div class="stat"><div class="k">CMYK</div><div class="v" id="sCmyk">—</div></div>
+        <div class="stat"><div class="k">VLT (TLV)</div><div class="v" id="sVlt">—</div></div>
+        <div class="stat"><div class="k">Filtro</div><div class="v" id="sFil">—</div></div>
+        <div class="stat"><div class="k">Categoria</div><div class="v" id="sCat">—</div></div>
+      </div>
+    </div>
+    <div id="gradBox" class="hidden">
+      <div class="bands" id="bands"></div>
+      <div class="grid">
+        <div class="stat"><div class="k">VLT topo</div><div class="v" id="gTop">—</div></div>
+        <div class="stat"><div class="k">VLT base</div><div class="v" id="gBot">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Dados do pedido</h3>
+    <label for="sao">Número de SAO</label>
+    <input type="text" id="sao" inputmode="numeric" placeholder="ex: 12345">
+    <label for="os">Número de OS</label>
+    <input type="text" id="os" inputmode="numeric" placeholder="ex: 67890">
+  </div>
+
+  <div class="card" id="matchCard">
+    <h3>Cores semelhantes</h3>
+    <div id="matchList"></div>
+    <p class="note" id="matchNote"></p>
+  </div>
+
+  <div class="toolbar">
+    <button class="ghost" id="btnRestart">Recomeçar</button>
+    <button id="btnSave" disabled>Salvar para Zeiss</button>
+  </div>
+  <p class="note" id="saveMsg"></p>
+  <div id="pdfView" class="hidden" style="margin-top:10px;"></div>
+</section>
+
+<script src="app.js"></script>
+<script>
+/* Register the service worker so the app works offline once installed. */
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
