@@ -709,15 +709,15 @@ function effectiveSolid(){
   // returns {rgb, vlt} to use everywhere (chosen if any, else measured)
   if(chosenMatch){
     const v = Math.round((chosenMatch.vlt[0]+chosenMatch.vlt[1])/2);
-    return { rgb: chosenMatch.rgb.slice(), vlt: v, name: chosenMatch.name };
+    return { rgb: chosenMatch.rgb.slice(), vlt: v, name: chosenMatch.name, farb: chosenMatch.farb||null };
   }
-  return { rgb: analysis.solid.rgb, vlt: analysis.solid.vlt, name: null };
+  return { rgb: analysis.solid.rgb, vlt: analysis.solid.vlt, name: null, farb: null };
 }
 function applyChosenColor(){
   if(lensType!=="solid"){ // for gradient we only note the choice, swatch stays
     const note=$("colorSource");
     if(note) note.textContent = chosenMatch
-      ? ("Cor escolhida: "+chosenMatch.name)
+      ? ("Cor escolhida: "+chosenMatch.name+(chosenMatch.farb?(" — FARB "+chosenMatch.farb):""))
       : "Cor medida da lente.";
     return;
   }
@@ -731,7 +731,7 @@ function applyChosenColor(){
   $("sCat").textContent="Cat "+categoryOf(e.vlt);
   const note=$("colorSource");
   if(note) note.textContent = chosenMatch
-    ? ("Cor escolhida: "+chosenMatch.name+" (substitui a medida)")
+    ? ("Cor escolhida: "+chosenMatch.name+(chosenMatch.farb?(" — FARB "+chosenMatch.farb):"")+" (substitui a medida)")
     : "Cor medida da lente.";
 }
 
@@ -770,8 +770,9 @@ function refreshMatches(){
     $("matchNote").textContent="Cores semelhantes encontradas (não é obrigatório escolher).";
     out.forEach(m=>{
       const el=document.createElement("div"); el.className="match";
+      const nmeDisplay = m.farb ? `${m.name} — FARB ${m.farb}` : m.name;
       el.innerHTML=`<span class="chip" style="background:${rgbToHex(m.rgb)}"></span>
-        <span><div class="nm">${m.name}</div>
+        <span><div class="nm">${nmeDisplay}</div>
         <div class="ds">VLT ${m.vlt[0]}–${m.vlt[1]}% · ΔE ${Math.round(m.de)}</div></span>
         <span class="pick">tocar p/ usar</span>`;
       el.addEventListener("click",()=>{
@@ -860,7 +861,7 @@ function runSave(){
     doc.text(`VLT: ${s.vlt}%   Filtro: ${100-s.vlt}%   Categoria ${categoryOf(s.vlt)}`,180,y+62);
     y+=78;
     if(s.name){ doc.setFontSize(9); doc.setTextColor(95,122,44);
-      doc.text(`Cor selecionada do banco: ${s.name}`,180,y); y+=14; }
+      doc.text(`Cor selecionada do banco: ${s.name}${s.farb?(" — FARB "+s.farb):""}`,180,y); y+=14; }
     else { y+=6; }
   }else{
     doc.setFont("courier","bold"); doc.setFontSize(10); doc.text("Bandas (topo → base):",40,y); y+=8;
