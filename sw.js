@@ -1,6 +1,6 @@
 /* Service worker — caches the app so it works offline once visited.
    Bump CACHE when you change any file, so phones fetch the new version. */
-const CACHE = "amostra-v2";
+const CACHE = "amostra-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,10 @@ const ASSETS = [
   "./app.js",
   "./lentes.json",
   "./jspdf.umd.min.js",
-  "./manifest.json"
+  "./manifest.json",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./apple-touch-icon.png"
 ];
 
 self.addEventListener("install", e=>{
