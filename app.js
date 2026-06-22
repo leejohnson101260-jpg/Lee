@@ -709,9 +709,9 @@ function effectiveSolid(){
   // returns {rgb, vlt} to use everywhere (chosen if any, else measured)
   if(chosenMatch){
     const v = Math.round((chosenMatch.vlt[0]+chosenMatch.vlt[1])/2);
-    return { rgb: chosenMatch.rgb.slice(), vlt: v, name: chosenMatch.name, farb: chosenMatch.farb||null };
+    return { rgb: chosenMatch.rgb.slice(), vlt: v, name: chosenMatch.name, farb: chosenMatch.farb||null, grad: chosenMatch.grad||null };
   }
-  return { rgb: analysis.solid.rgb, vlt: analysis.solid.vlt, name: null, farb: null };
+  return { rgb: analysis.solid.rgb, vlt: analysis.solid.vlt, name: null, farb: null, grad: null };
 }
 function applyChosenColor(){
   if(lensType!=="solid"){ // for gradient we only note the choice, swatch stays
@@ -771,9 +771,12 @@ function refreshMatches(){
     out.forEach(m=>{
       const el=document.createElement("div"); el.className="match";
       const nmeDisplay = m.farb ? `${m.name} — FARB ${m.farb}` : m.name;
+      const gradLine = m.grad
+        ? `<div class="ds">Degradê: escuro VLT ${m.grad.darkVlt}% → claro VLT ${m.grad.lightVlt}% · transição ${m.grad.transStart}–${m.grad.transEnd}% do topo</div>`
+        : "";
       el.innerHTML=`<span class="chip" style="background:${rgbToHex(m.rgb)}"></span>
         <span><div class="nm">${nmeDisplay}</div>
-        <div class="ds">VLT ${m.vlt[0]}–${m.vlt[1]}% · ΔE ${Math.round(m.de)}</div></span>
+        <div class="ds">VLT ${m.vlt[0]}–${m.vlt[1]}% · ΔE ${Math.round(m.de)}</div>${gradLine}</span>
         <span class="pick">tocar p/ usar</span>`;
       el.addEventListener("click",()=>{
         const already = el.classList.contains("sel");
@@ -861,7 +864,8 @@ function runSave(){
     doc.text(`VLT: ${s.vlt}%   Filtro: ${100-s.vlt}%   Categoria ${categoryOf(s.vlt)}`,180,y+62);
     y+=78;
     if(s.name){ doc.setFontSize(9); doc.setTextColor(95,122,44);
-      doc.text(`Cor selecionada do banco: ${s.name}${s.farb?(" — FARB "+s.farb):""}`,180,y); y+=14; }
+      doc.text(`Cor selecionada do banco: ${s.name}${s.farb?(" — FARB "+s.farb):""}`,180,y); y+=14;
+      if(s.grad){ doc.text(`Degradê: escuro VLT ${s.grad.darkVlt}% -> claro VLT ${s.grad.lightVlt}%   transicao ${s.grad.transStart}-${s.grad.transEnd}% do topo`,180,y); y+=14; } }
     else { y+=6; }
   }else{
     doc.setFont("courier","bold"); doc.setFontSize(10); doc.text("Bandas (topo → base):",40,y); y+=8;
