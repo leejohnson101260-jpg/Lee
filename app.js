@@ -177,16 +177,53 @@ function resampleClosed(poly,n){
 }
 
 /* Full trace: returns 16 outline points in the data's pixel coords, or null. */
+function blobBounds(label,id,w,h){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    if(label[y*w+x]===id){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  }
+  return {x0,y0,x1,y1};
+}
+
 function traceLens(data,w,h){
-  const {bgLum}=bgStats(data,w,h);
-  const {mask}=lensMask(data,w,h,bgLum);
+  // The lens is photographed bare on a light sheet. The lens is the DARKEST
+  // sizeable region near the center. Build a mask of dark pixels and pick the
+  // darkest central blob — this ignores the white sheet and the dark desk
+  // margins around it.
+  const n=w*h;
+  const lum=new Float32Array(n);
+  for(let p=0,i=0;p<n;p++,i+=4){ lum[p]=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]; }
+  // brightness of the sheet = bright median (sample whole image)
+  const sorted=Array.from(lum).sort((a,b)=>a-b);
+  const sheetLum=sorted[Math.floor(n*0.75)];   // upper quartile ~ the light sheet
+  // dark threshold: clearly darker than the sheet
+  const thr=Math.min(sheetLum-45, 130);
+  const mask=new Uint8Array(n);
+  for(let p=0;p<n;p++){ if(lum[p] < thr) mask[p]=1; }
+
   const {label,comps}=findComponents(mask,w,h);
   const cxc=w/2,cyc=h/2,maxD=Math.hypot(cxc,cyc);
-  let best=null,bestScore=0;
+  // average luminance per component
+  const sumLum={}, cnt={};
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const p=y*w+x, id=label[p];
+    if(id>0){ sumLum[id]=(sumLum[id]||0)+lum[p]; cnt[id]=(cnt[id]||0)+1; }
+  }
+  let best=null,bestScore=-1;
   for(const c of comps){
-    if(c.count<w*h*0.015 || c.count>w*h*0.85)continue;
-    const d=Math.hypot(c.cx-cxc,c.cy-cyc)/maxD;
-    const score=c.count*(1-0.5*d);
+    if(c.count<n*0.01 || c.count>n*0.80)continue;            // ignore specks and full-frame
+    const d=Math.hypot(c.cx-cxc,c.cy-cyc)/maxD;              // 0 center .. 1 corner
+    if(d>0.55)continue;                                      // lens is near center; reject edge strips
+    // reject thin strips (desk margins): bounding box must be reasonably filled
+    const bb=blobBounds(label,c.id,w,h);
+    const bw=bb.x1-bb.x0+1, bh=bb.y1-bb.y0+1;
+    const fill=c.count/(bw*bh);
+    const aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh));
+    if(fill<0.45 || aspect>3.2)continue;                     // lens is blob-like, not a strip
+    const avg=sumLum[c.id]/cnt[c.id];                        // darker = better
+    const darkScore=(255-avg)/255;
+    const sizeScore=Math.min(1, c.count/(n*0.25));
+    const score=darkScore*0.7 + sizeScore*0.2 + (1-d)*0.1;
     if(score>bestScore){bestScore=score;best=c;}
   }
   if(!best)return null;
