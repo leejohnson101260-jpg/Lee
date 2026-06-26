@@ -712,6 +712,7 @@ function showResults(){
   $("solidBox").classList.toggle("hidden", isGrad);
   $("gradBox").classList.toggle("hidden", !isGrad);
   $("transWrap").classList.toggle("hidden", !isGrad);
+  $("acoWrap").classList.toggle("hidden", !isGrad);
 
   const s=analysis.solid;
   $("solidSwatch").style.background=rgbToHex(s.rgb);
@@ -847,8 +848,9 @@ $("aco").addEventListener("input",validateSave);
 $("transMm").addEventListener("input",validateSave);
 function validateSave(){
   const hasSao=!!$("sao").value.trim(), hasOs=!!$("os").value.trim();
-  const hasAco=!!$("aco").value.trim();
   const isGrad = analysis && analysis.type==="gradient";
+  // ACO (altura de centro óptico) and transition size are only needed for gradients
+  const hasAco = !isGrad || !!$("aco").value.trim();
   const hasTrans = !isGrad || !!$("transMm").value.trim();
   const ok=hasSao && hasOs && hasAco && hasTrans;
   $("btnSave").disabled=!ok;
@@ -883,8 +885,9 @@ function runSave(){
   try{
   { const v=document.getElementById("pdfView"); if(v){ v.classList.add("hidden"); v.innerHTML=""; } }
   const sao=$("sao").value.trim(), os=$("os").value.trim();
-  const aco=$("aco").value.trim();
-  const transMm = (analysis && analysis.type==="gradient") ? $("transMm").value.trim() : "";
+  const isGrad = analysis && analysis.type==="gradient";
+  const aco = isGrad ? $("aco").value.trim() : "";
+  const transMm = isGrad ? $("transMm").value.trim() : "";
   try{ localStorage.setItem("lens_last_sao", sao); }catch(e){}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:"pt",format:"a4"});
@@ -897,7 +900,7 @@ function runSave(){
   y+=54;
   doc.setTextColor(31,42,20); doc.setFont("courier","bold"); doc.setFontSize(11);
   doc.text(`SAO: ${sao}    OS: ${os}`,40,y);
-  y+=16; doc.text(`ACO (altura centro optico): ${aco} mm`,40,y);
+  if(aco){ y+=16; doc.text(`ACO (altura centro optico): ${aco} mm`,40,y); }
   if(transMm){ y+=16; doc.text(`Transicao do degrade: ${transMm} mm`,40,y); }
   const st=stamp();
   doc.setFont("courier","normal");
@@ -999,7 +1002,7 @@ function runSave(){
   function orderText(){
     let t="*Amostra de Cor Digital*\n";
     t+="SAO: "+sao+"   OS: "+os+"\n";
-    t+="ACO (altura centro óptico): "+aco+" mm\n";
+    if(aco) t+="ACO (altura centro óptico): "+aco+" mm\n";
     if(transMm) t+="Transição do degradê: "+transMm+" mm\n";
     t+="Data: "+st.date+"  Hora: "+st.time+"\n";
     t+="Tipo: "+(lensType==="gradient"?"Degradê":"Sólida")+"\n";
