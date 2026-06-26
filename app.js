@@ -388,7 +388,7 @@ function enterIsolate(){
   $("step-capture").classList.add("hidden");
   $("step-results").classList.add("hidden");
   $("step-isolate").classList.remove("hidden");
-  $("traceNote").textContent="Defina o formato da lente…";
+  $("traceNote").textContent="Detectando lente…";
   requestAnimationFrame(()=>requestAnimationFrame(()=>setupCanvasAndImage(0)));
 }
 
@@ -428,16 +428,33 @@ function buildOffscreen(){
 }
 
 function autoTrace(){
-  // Bare lens on a white surface: the user defines the shape. Start from a
-  // centered oval that the user drags onto the lens edge. (No frame to detect.)
+  // Lens is photographed bare on a white surface. Auto-detect the lens blob
+  // (dark/tinted area against white). If detection fails, fall back to a
+  // centered oval the user drags. Either way, the user can adjust the dots.
   const tw=Math.min(off.w,320), tf=tw/off.w, th=Math.max(1,Math.round(off.h*tf));
-  traced=false;
-  const p16=[];const cx=tw/2,cy=th/2,rx=tw*0.32,ry=th*0.32;
-  for(let k=0;k<16;k++){const a=k/16*2*Math.PI;p16.push({x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*ry});}
+  const tdata=new Uint8ClampedArray(tw*th*4);
+  for(let y=0;y<th;y++){
+    const sy=Math.min(off.h-1,Math.round(y/tf));
+    for(let x=0;x<tw;x++){
+      const sx=Math.min(off.w-1,Math.round(x/tf));
+      const si=(sy*off.w+sx)*4, di=(y*tw+x)*4;
+      tdata[di]=off.data[si];tdata[di+1]=off.data[si+1];tdata[di+2]=off.data[si+2];tdata[di+3]=255;
+    }
+  }
+  const pts=traceLens(tdata,tw,th);
+  traced=!!pts;
+  let p16;
+  if(pts){
+    p16=pts;
+  }else{
+    p16=[];const cx=tw/2,cy=th/2,rx=tw*0.30,ry=th*0.30;
+    for(let k=0;k<16;k++){const a=k/16*2*Math.PI;p16.push({x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*ry});}
+  }
   const g=1/(tf*off.f);   // trace px -> image px
   outline=p16.map(p=>({x:p.x*g,y:p.y*g}));
-  $("traceNote").textContent =
-    "Arraste os pontos verdes para definir a borda da lente. Arraste dentro para mover tudo. Dois dedos: zoom.";
+  $("traceNote").textContent = traced
+    ? "Lente detectada. Arraste os pontos verdes para ajustar a borda. Arraste dentro para mover tudo. Dois dedos: zoom."
+    : "Não detectei a lente. Arraste os pontos verdes manualmente sobre a borda da lente.";
 }
 
 /* ---------- canvas drawing ---------- */
