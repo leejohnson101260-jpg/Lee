@@ -25,24 +25,24 @@
   <div class="drop" id="drop">
     <div class="icon">📷</div>
     <h2>TIRAR FOTO OU ENVIAR</h2>
-    <p>Abre a câmera ou a galeria de fotos</p>
+    <p>Coloque a lente FORA da armação, sobre uma superfície branca e plana</p>
     <p>Toque novamente para trocar a imagem</p>
   </div>
   <input type="file" id="file" accept="image/*" class="hidden">
-  <p class="hint">Tire ou envie a foto de uma lente para começar</p>
+  <p class="hint">Fotografe a lente sozinha (sem armação) sobre fundo branco para começar</p>
   <p class="hint err" id="capStatus"></p>
 </section>
 
 <!-- STEP 2: trace & adjust -->
 <section id="step-isolate" class="hidden">
   <div class="card">
-    <h3>Contorno da lente</h3>
-    <p class="note" id="traceNote">Detectando contorno…</p>
+    <h3>Formato da lente</h3>
+    <p class="note" id="traceNote">Defina o formato da lente…</p>
     <div class="canvas-wrap" id="cwrap">
       <canvas id="cv"></canvas>
     </div>
     <div class="toolbar">
-      <button class="ghost" id="btnRetrace">Re-detectar</button>
+      <button class="ghost" id="btnRetrace">Reposicionar</button>
       <button class="ghost" id="btnSmaller">− Menor</button>
       <button class="ghost" id="btnBigger">+ Maior</button>
     </div>
@@ -84,6 +84,12 @@
     <input type="text" id="sao" inputmode="numeric" placeholder="ex: 12345">
     <label for="os">Número de OS</label>
     <input type="text" id="os" inputmode="numeric" placeholder="ex: 67890">
+    <label for="aco">Altura de Centro Óptico — ACO (mm)</label>
+    <input type="text" id="aco" inputmode="decimal" placeholder="ex: 24">
+    <div id="transWrap" class="hidden">
+      <label for="transMm">Tamanho da transição do degradê (mm)</label>
+      <input type="text" id="transMm" inputmode="decimal" placeholder="ex: 12">
+    </div>
   </div>
 
   <div class="card" id="matchCard">

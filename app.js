@@ -388,7 +388,7 @@ function enterIsolate(){
   $("step-capture").classList.add("hidden");
   $("step-results").classList.add("hidden");
   $("step-isolate").classList.remove("hidden");
-  $("traceNote").textContent="Detectando contorno…";
+  $("traceNote").textContent="Defina o formato da lente…";
   requestAnimationFrame(()=>requestAnimationFrame(()=>setupCanvasAndImage(0)));
 }
 
@@ -428,31 +428,16 @@ function buildOffscreen(){
 }
 
 function autoTrace(){
-  // downsample offscreen to trace resolution
+  // Bare lens on a white surface: the user defines the shape. Start from a
+  // centered oval that the user drags onto the lens edge. (No frame to detect.)
   const tw=Math.min(off.w,320), tf=tw/off.w, th=Math.max(1,Math.round(off.h*tf));
-  const tdata=new Uint8ClampedArray(tw*th*4);
-  for(let y=0;y<th;y++){
-    const sy=Math.min(off.h-1,Math.round(y/tf));
-    for(let x=0;x<tw;x++){
-      const sx=Math.min(off.w-1,Math.round(x/tf));
-      const si=(sy*off.w+sx)*4, di=(y*tw+x)*4;
-      tdata[di]=off.data[si];tdata[di+1]=off.data[si+1];tdata[di+2]=off.data[si+2];tdata[di+3]=255;
-    }
-  }
-  const pts=traceLens(tdata,tw,th);
-  traced=!!pts;
-  let p16;
-  if(pts){
-    p16=pts;
-  }else{
-    p16=[];const cx=tw/2,cy=th/2,rx=tw*0.30,ry=th*0.30;
-    for(let k=0;k<16;k++){const a=k/16*2*Math.PI;p16.push({x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*ry});}
-  }
+  traced=false;
+  const p16=[];const cx=tw/2,cy=th/2,rx=tw*0.32,ry=th*0.32;
+  for(let k=0;k<16;k++){const a=k/16*2*Math.PI;p16.push({x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*ry});}
   const g=1/(tf*off.f);   // trace px -> image px
   outline=p16.map(p=>({x:p.x*g,y:p.y*g}));
-  $("traceNote").textContent = traced
-    ? "Contorno detectado. Arraste os pontos verdes para ajustar a borda. Arraste dentro do contorno para mover tudo. Dois dedos: zoom."
-    : "Não detectei a lente automaticamente. Ajuste os pontos verdes manualmente sobre a borda da lente.";
+  $("traceNote").textContent =
+    "Arraste os pontos verdes para definir a borda da lente. Arraste dentro para mover tudo. Dois dedos: zoom.";
 }
 
 /* ---------- canvas drawing ---------- */
@@ -672,6 +657,7 @@ function showResults(){
     : "LENTE SÓLIDA detectada";
   $("solidBox").classList.toggle("hidden", isGrad);
   $("gradBox").classList.toggle("hidden", !isGrad);
+  $("transWrap").classList.toggle("hidden", !isGrad);
 
   const s=analysis.solid;
   $("solidSwatch").style.background=rgbToHex(s.rgb);
@@ -697,6 +683,7 @@ function showResults(){
   try{ lastSao=localStorage.getItem("lens_last_sao"); }catch(e){}
   if(lastSao) $("sao").value=lastSao;
   $("os").value="";
+  validateSave();
   refreshMatches();
   applyChosenColor();   // reset swatch/note to measured state
   validateSave();
@@ -772,7 +759,7 @@ function refreshMatches(){
       const el=document.createElement("div"); el.className="match";
       const nmeDisplay = m.farb ? `${m.name} — FARB ${m.farb}` : m.name;
       const gradLine = m.grad
-        ? `<div class="ds">Degradê: escuro VLT ${m.grad.darkVlt}% → claro VLT ${m.grad.lightVlt}% · transição ${m.grad.transStart}–${m.grad.transEnd}% do topo</div>`
+        ? `<div class="ds">Degradê (ref.): escuro VLT ${m.grad.darkVlt}% → claro VLT ${m.grad.lightVlt}%</div>`
         : "";
       el.innerHTML=`<span class="chip" style="background:${rgbToHex(m.rgb)}"></span>
         <span><div class="nm">${nmeDisplay}</div>
@@ -802,18 +789,24 @@ function refreshMatches(){
 /* ---------- save ---------- */
 $("sao").addEventListener("input",validateSave);
 $("os").addEventListener("input",validateSave);
+$("aco").addEventListener("input",validateSave);
+$("transMm").addEventListener("input",validateSave);
 function validateSave(){
   const hasSao=!!$("sao").value.trim(), hasOs=!!$("os").value.trim();
-  const ok=hasSao && hasOs;
+  const hasAco=!!$("aco").value.trim();
+  const isGrad = analysis && analysis.type==="gradient";
+  const hasTrans = !isGrad || !!$("transMm").value.trim();
+  const ok=hasSao && hasOs && hasAco && hasTrans;
   $("btnSave").disabled=!ok;
   // Tell the user why the button is greyed out, so it never feels "broken".
   const msg=$("saveMsg");
   if(ok){
     if(msg.textContent.startsWith("Preencha")) msg.textContent="";
   }else{
-    if(!hasSao && !hasOs) msg.textContent="Preencha o SAO e a OS para liberar o botão.";
-    else if(!hasSao)      msg.textContent="Preencha o número de SAO para liberar o botão.";
-    else                  msg.textContent="Preencha o número de OS para liberar o botão.";
+    if(!hasSao)        msg.textContent="Preencha o número de SAO para liberar o botão.";
+    else if(!hasOs)    msg.textContent="Preencha o número de OS para liberar o botão.";
+    else if(!hasAco)   msg.textContent="Preencha a Altura de Centro Óptico (ACO) para liberar o botão.";
+    else if(!hasTrans) msg.textContent="Preencha o tamanho da transição do degradê (mm) para liberar o botão.";
   }
 }
 
@@ -836,6 +829,8 @@ function runSave(){
   try{
   { const v=document.getElementById("pdfView"); if(v){ v.classList.add("hidden"); v.innerHTML=""; } }
   const sao=$("sao").value.trim(), os=$("os").value.trim();
+  const aco=$("aco").value.trim();
+  const transMm = (analysis && analysis.type==="gradient") ? $("transMm").value.trim() : "";
   try{ localStorage.setItem("lens_last_sao", sao); }catch(e){}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:"pt",format:"a4"});
@@ -848,6 +843,8 @@ function runSave(){
   y+=54;
   doc.setTextColor(31,42,20); doc.setFont("courier","bold"); doc.setFontSize(11);
   doc.text(`SAO: ${sao}    OS: ${os}`,40,y);
+  y+=16; doc.text(`ACO (altura centro optico): ${aco} mm`,40,y);
+  if(transMm){ y+=16; doc.text(`Transicao do degrade: ${transMm} mm`,40,y); }
   const st=stamp();
   doc.setFont("courier","normal");
   doc.text(`Data: ${st.date}  Hora: ${st.time}`,40,y+16);
@@ -865,7 +862,7 @@ function runSave(){
     y+=78;
     if(s.name){ doc.setFontSize(9); doc.setTextColor(95,122,44);
       doc.text(`Cor selecionada do banco: ${s.name}${s.farb?(" — FARB "+s.farb):""}`,180,y); y+=14;
-      if(s.grad){ doc.text(`Degradê: escuro VLT ${s.grad.darkVlt}% -> claro VLT ${s.grad.lightVlt}%   transicao ${s.grad.transStart}-${s.grad.transEnd}% do topo`,180,y); y+=14; } }
+      if(s.grad){ doc.text(`Degrade (ref. banco): escuro VLT ${s.grad.darkVlt}% -> claro VLT ${s.grad.lightVlt}%`,180,y); y+=14; } }
     else { y+=6; }
   }else{
     doc.setFont("courier","bold"); doc.setFontSize(10); doc.text("Bandas (topo → base):",40,y); y+=8;
@@ -948,6 +945,8 @@ function runSave(){
   function orderText(){
     let t="*Amostra de Cor Digital*\n";
     t+="SAO: "+sao+"   OS: "+os+"\n";
+    t+="ACO (altura centro óptico): "+aco+" mm\n";
+    if(transMm) t+="Transição do degradê: "+transMm+" mm\n";
     t+="Data: "+st.date+"  Hora: "+st.time+"\n";
     t+="Tipo: "+(lensType==="gradient"?"Degradê":"Sólida")+"\n";
     if(lensType==="solid"){
