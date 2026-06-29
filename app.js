@@ -1184,6 +1184,24 @@ loadDB();
     logo.addEventListener("mouseleave",cancel);
   }
 
+  // Reliable opener: tap the version dot 3 times within 2 seconds.
+  const dot=$("calDot");
+  if(dot){
+    let taps=0, tTimer=null;
+    const onTap=()=>{
+      taps++;
+      if(tTimer) clearTimeout(tTimer);
+      tTimer=setTimeout(()=>{taps=0;},2000);
+      if(taps>=3){ taps=0; toggleCal();
+        // jump to results if we have an analysis, so the panel is visible
+        if(analysis){ /* already on results */ }
+        alert(calMode?"Calibração ATIVADA. Analise uma lente e role até o painel verde 🔧":"Calibração desativada.");
+      }
+    };
+    dot.addEventListener("click",onTap);
+    dot.addEventListener("touchend",(e)=>{e.preventDefault();onTap();});
+  }
+
   // expose a refresh so showResults can update measured line if open
   window.__calRefresh=()=>{ if(calMode) showMeasured(); };
 
