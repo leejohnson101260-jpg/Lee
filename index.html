@@ -16,7 +16,7 @@
 </head>
 <body>
 <header>
-  <div class="logo">Amostra de Cor Digital</div>
+  <div class="logo" id="appLogo">Amostra de Cor Digital</div>
   <div class="tag">COLOR · GRADIENT · TRANSPARENCY</div>
 </header>
 
@@ -92,6 +92,25 @@
       <label for="transMm">Tamanho da transição do degradê (mm)</label>
       <input type="text" id="transMm" inputmode="decimal" placeholder="ex: 12">
     </div>
+  </div>
+
+  <div class="card" id="calCard" class="hidden" style="display:none;border:2px solid #7a9a3a;">
+    <h3>🔧 Calibração (modo oculto)</h3>
+    <p class="note">Fotografe uma lente de referência conhecida, depois informe os valores reais. O app guarda cada amostra para calcular a correção.</p>
+    <label for="calFarb">FARB / código de referência</label>
+    <input type="text" id="calFarb" placeholder="ex: 454">
+    <label for="calVltTrue">VLT real (%)</label>
+    <input type="text" id="calVltTrue" inputmode="decimal" placeholder="ex: 15">
+    <label for="calHexTrue">Cor real HEX (opcional)</label>
+    <input type="text" id="calHexTrue" placeholder="ex: #4a3b2a">
+    <p class="note" id="calMeasured" style="margin-top:8px;">Medido: —</p>
+    <div class="toolbar">
+      <button class="ghost" id="calAdd">Adicionar amostra</button>
+      <button class="ghost" id="calExport">Exportar calibração</button>
+    </div>
+    <p class="note" id="calCount">0 amostras guardadas.</p>
+    <textarea id="calOut" class="hidden" rows="8" style="width:100%;font-family:monospace;font-size:12px;" readonly></textarea>
+    <button class="ghost" id="calClear" style="margin-top:8px;">Apagar todas as amostras</button>
   </div>
 
   <div class="card" id="matchCard">

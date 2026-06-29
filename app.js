@@ -7,6 +7,30 @@
 const $ = id => document.getElementById(id);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 
+/* ---------- CALIBRATION ----------
+   Correction baked into the app and shipped to all users. Starts NEUTRAL
+   (no change). After collecting reference lenses in the hidden calibration
+   screen (long-press the logo), export the computed block and replace the
+   numbers below, then redeploy. Everyone then gets the calibrated readings.
+
+   vlt:  measured% is mapped by  true ≈ slope*measured + offset
+   rgb:  per-channel gain to correct camera/lighting color cast
+*/
+const CALIBRATION = {
+  vlt: { slope: 1.0, offset: 0.0 },
+  rgb: { rGain: 1.0, gGain: 1.0, bGain: 1.0 }
+};
+function calVlt(v){
+  return clamp(Math.round(CALIBRATION.vlt.slope * v + CALIBRATION.vlt.offset), 2, 95);
+}
+function calRgb(rgb){
+  return [
+    clamp(Math.round(rgb[0]*CALIBRATION.rgb.rGain),0,255),
+    clamp(Math.round(rgb[1]*CALIBRATION.rgb.gGain),0,255),
+    clamp(Math.round(rgb[2]*CALIBRATION.rgb.bGain),0,255)
+  ];
+}
+
 /* ---------- Lens color database ----------
    Loaded from lentes.json (Brazilian market: ZEISS, Ray-Ban,
    Oakley, Maui Jim, Costa, Essilor, Serengeti, Persol + generic
@@ -643,7 +667,8 @@ function vltFromRgb(rgb,bgLin){
   // T = ratio^(2/3). Calibratable against lenses of known VLT.
   const base = bgLin || 1;
   const ratio = Math.min(1, linLum(rgb[0],rgb[1],rgb[2]) / base);
-  return clamp(Math.round(Math.pow(ratio, 2/3)*100), 2, 95);
+  const raw = Math.pow(ratio, 2/3)*100;
+  return calVlt(raw);
 }
 function categoryOf(vlt){       // EU/ABNT sunglass filter categories
   if(vlt>80)return 0; if(vlt>43)return 1; if(vlt>18)return 2;
@@ -685,11 +710,12 @@ function analyze(){
   const solid=[0,1,2].map(ch=>{
     const s=bands.map(b=>b[ch]).sort((a,b)=>a-b); return s[5];
   });
+  const solidCal = calRgb(solid);
   const solidVlt = vlts.slice().sort((a,b)=>a-b)[5];   // median of band VLTs
 
   analysis={
-    bands: bands.map((b,i)=>({rgb:b, vlt:vlts[i]})),
-    solid:{rgb:solid, vlt:solidVlt},
+    bands: bands.map((b,i)=>({rgb:calRgb(b), vlt:vlts[i]})),
+    solid:{rgb:solidCal, vlt:solidVlt},
     bgLum:prof.global,
     type: isGradient?"gradient":"solid"
   };
@@ -740,6 +766,7 @@ function showResults(){
   $("os").value="";
   validateSave();
   refreshMatches();
+  if(window.__calRefresh) window.__calRefresh();
   applyChosenColor();   // reset swatch/note to measured state
   validateSave();
 }
@@ -1111,3 +1138,114 @@ $("btnRestart").addEventListener("click",()=>{
    Boot: load the lens database before the app is usable.
    ============================================================ */
 loadDB();
+
+/* ============================================================
+   CALIBRATION MODE (hidden) — long-press the logo to toggle.
+   Collects measured-vs-true reference samples on this phone, then
+   exports a block of constants to paste into CALIBRATION above.
+   Normal users never see this.
+   ============================================================ */
+(function(){
+  let calMode=false, pressTimer=null;
+  const KEY="acd_cal_samples";
+  const load=()=>{ try{return JSON.parse(localStorage.getItem(KEY)||"[]");}catch(e){return [];} };
+  const save=(a)=>{ try{localStorage.setItem(KEY,JSON.stringify(a));}catch(e){} };
+
+  function refreshCount(){
+    const n=load().length;
+    const el=$("calCount"); if(el) el.textContent=n+" amostra(s) guardada(s).";
+  }
+  function showMeasured(){
+    const el=$("calMeasured"); if(!el) return;
+    if(analysis && analysis.solid){
+      const s=analysis.solid;
+      el.textContent=`Medido: VLT ${s.vlt}%  RGB ${s.rgb[0]},${s.rgb[1]},${s.rgb[2]}  ${rgbToHex(s.rgb)}`;
+    }else{
+      el.textContent="Medido: — (analise uma lente primeiro)";
+    }
+  }
+  function toggleCal(){
+    calMode=!calMode;
+    const c=$("calCard");
+    if(c){ c.style.display = calMode ? "block" : "none"; }
+    if(calMode){ refreshCount(); showMeasured();
+      $("saveMsg") && ($("saveMsg").textContent="Modo calibração ATIVO."); }
+  }
+
+  const logo=$("appLogo");
+  if(logo){
+    const start=()=>{ pressTimer=setTimeout(toggleCal,900); };
+    const cancel=()=>{ if(pressTimer){clearTimeout(pressTimer);pressTimer=null;} };
+    logo.addEventListener("touchstart",start,{passive:true});
+    logo.addEventListener("touchend",cancel);
+    logo.addEventListener("touchmove",cancel);
+    logo.addEventListener("mousedown",start);
+    logo.addEventListener("mouseup",cancel);
+    logo.addEventListener("mouseleave",cancel);
+  }
+
+  // expose a refresh so showResults can update measured line if open
+  window.__calRefresh=()=>{ if(calMode) showMeasured(); };
+
+  document.addEventListener("DOMContentLoaded",()=>{
+    const add=$("calAdd"), exp=$("calExport"), clr=$("calClear");
+    add && add.addEventListener("click",()=>{
+      if(!analysis||!analysis.solid){ $("calMeasured").textContent="Analise uma lente primeiro."; return; }
+      const farb=$("calFarb").value.trim();
+      const vTrue=parseFloat($("calVltTrue").value.trim());
+      const hexTrue=$("calHexTrue").value.trim();
+      if(!farb || isNaN(vTrue)){ $("calMeasured").textContent="Informe FARB e VLT real."; return; }
+      const arr=load();
+      arr.push({
+        farb,
+        vMeas: analysis.solid.vlt, vTrue,
+        rgbMeas: analysis.solid.rgb.slice(),
+        hexTrue: hexTrue||null
+      });
+      save(arr); refreshCount();
+      $("calFarb").value=""; $("calVltTrue").value=""; $("calHexTrue").value="";
+      $("calMeasured").textContent="Amostra adicionada ✓  (VLT medido "+analysis.solid.vlt+"% → real "+vTrue+"%)";
+    });
+    exp && exp.addEventListener("click",()=>{
+      const arr=load();
+      if(arr.length<2){ $("calMeasured").textContent="Adicione pelo menos 2 amostras para exportar."; return; }
+      // VLT: least-squares fit true = slope*meas + offset
+      const n=arr.length;
+      let sx=0,sy=0,sxx=0,sxy=0;
+      arr.forEach(s=>{ sx+=s.vMeas; sy+=s.vTrue; sxx+=s.vMeas*s.vMeas; sxy+=s.vMeas*s.vTrue; });
+      const denom=(n*sxx - sx*sx)||1;
+      let slope=(n*sxy - sx*sy)/denom;
+      let offset=(sy - slope*sx)/n;
+      if(!isFinite(slope)||slope<=0){ slope=1; offset=0; }
+      // RGB: average per-channel gain from samples that have a true hex
+      let rG=[],gG=[],bG=[];
+      arr.forEach(s=>{
+        if(s.hexTrue && /^#?[0-9a-fA-F]{6}$/.test(s.hexTrue)){
+          const h=s.hexTrue.replace("#","");
+          const tr=parseInt(h.slice(0,2),16),tg=parseInt(h.slice(2,4),16),tb=parseInt(h.slice(4,6),16);
+          if(s.rgbMeas[0]>4) rG.push(tr/s.rgbMeas[0]);
+          if(s.rgbMeas[1]>4) gG.push(tg/s.rgbMeas[1]);
+          if(s.rgbMeas[2]>4) bG.push(tb/s.rgbMeas[2]);
+        }
+      });
+      const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:1;
+      const rGain=+avg(rG).toFixed(3), gGain=+avg(gG).toFixed(3), bGain=+avg(bG).toFixed(3);
+      const block=
+`const CALIBRATION = {
+  vlt: { slope: ${slope.toFixed(4)}, offset: ${offset.toFixed(4)} },
+  rgb: { rGain: ${rGain}, gGain: ${gGain}, bGain: ${bGain} }
+};
+// baseado em ${n} amostra(s) de referência`;
+      const out=$("calOut");
+      out.classList.remove("hidden");
+      out.value=block;
+      out.select();
+      $("calMeasured").textContent="Calibração calculada. Copie o bloco e envie para colar no app.";
+    });
+    clr && clr.addEventListener("click",()=>{
+      save([]); refreshCount();
+      const out=$("calOut"); if(out){ out.classList.add("hidden"); out.value=""; }
+      $("calMeasured").textContent="Amostras apagadas.";
+    });
+  });
+})();
