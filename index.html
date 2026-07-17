@@ -32,7 +32,7 @@
   <p class="hint">Fotografe a lente sozinha (sem armação) sobre fundo branco para começar</p>
   <p class="hint err" id="capStatus"></p>
   <p class="hint" id="verLine" style="text-align:center;opacity:0.55;margin-top:24px;">
-    Amostra de Cor Digital · v11 <span id="calDot" style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border:1px solid #c8d4b0;border-radius:50%;cursor:pointer;">•</span>
+    Amostra de Cor Digital · v12 <span id="calDot" style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border:1px solid #c8d4b0;border-radius:50%;cursor:pointer;">•</span>
   </p>
 </section>
 
@@ -130,6 +130,21 @@
   <div id="pdfView" class="hidden" style="margin-top:10px;"></div>
 </section>
 
+<!-- Firebase: banco de dados de cores compartilhado entre todos os aparelhos -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCBjLrv5tV-G4639fuQNaVUlUTq84oOvHo",
+    authDomain: "amostra-de-cor-digital.firebaseapp.com",
+    projectId: "amostra-de-cor-digital",
+    storageBucket: "amostra-de-cor-digital.firebasestorage.app",
+    messagingSenderId: "287647200488",
+    appId: "1:287647200488:web:281e90209dcabe73b9855d"
+  };
+  firebase.initializeApp(firebaseConfig);
+  window.fsDB = firebase.firestore();
+</script>
 <script src="app.js"></script>
 <script>
 /* Register the service worker so the app works offline once installed. */

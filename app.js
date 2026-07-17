@@ -39,14 +39,73 @@ function calRgb(rgb){
    used to deduplicate suggestions. ---------- */
 let DB = [];   // filled by loadDB() before any analysis can run
 
+function slugify(s){
+  return s.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9]+/g,"_")
+    .replace(/^_+|_+$/g,"");
+}
+
+/* Firestore is the shared library across every phone. On the very first
+   load (empty collection) we seed it once from the local lentes.json copy,
+   giving every entry a stable id (FARB code when present, else a slug of
+   the name) so future confirmations know exactly which document to update.
+   If Firestore can't be reached (offline, misconfigured), we fall back to
+   the static lentes.json so the app still works — just without shared
+   learning until the connection is back. */
 async function loadDB(){
   try{
-    const res = await fetch("lentes.json", {cache:"no-store"});
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    DB = await res.json();
+    if(!window.fsDB) throw new Error("Firestore não inicializado");
+    const col = window.fsDB.collection("lentes");
+    const snap = await col.get();
+    if(snap.empty){
+      const res = await fetch("lentes.json", {cache:"no-store"});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const seed = await res.json();
+      const batch = window.fsDB.batch();
+      const usedIds = new Set();
+      const seeded = seed.map(item=>{
+        let id = item.farb ? ("farb_"+item.farb) : slugify(item.name);
+        if(usedIds.has(id)){
+          let i=2; while(usedIds.has(id+"_"+i)) i++;
+          id = id+"_"+i;
+        }
+        usedIds.add(id);
+        const withHit = {...item, hitCount:0};
+        batch.set(col.doc(id), withHit);
+        return {...withHit, id};
+      });
+      await batch.commit();
+      DB = seeded;
+    }else{
+      DB = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    }
   }catch(e){
-    DB = [];
-    console.error("Falha ao carregar lentes.json:", e);
+    console.error("Firestore indisponível, usando cópia local:", e);
+    try{
+      const res = await fetch("lentes.json", {cache:"no-store"});
+      DB = await res.json();
+    }catch(e2){
+      DB = [];
+      console.error("Falha ao carregar lentes.json:", e2);
+    }
+  }
+}
+
+/* Self-improving library: when a user confirms a DB color as the match for
+   a lens they just scanned, fold the freshly measured RGB into that
+   document's stored average, weighted by how many times it's been
+   confirmed before. No admin action required — the library gets better
+   with every confirmed scan, on every phone. */
+async function updateLibraryHit(match, measuredRgb){
+  if(!window.fsDB || !match || !match.id || !measuredRgb) return;
+  try{
+    const hc = match.hitCount || 0;
+    const newRgb = match.rgb.map((c,i)=>Math.round((c*hc + measuredRgb[i])/(hc+1)));
+    await window.fsDB.collection("lentes").doc(match.id).update({ rgb:newRgb, hitCount:hc+1 });
+    match.rgb = newRgb; match.hitCount = hc+1;   // reflect immediately in this session
+  }catch(e){
+    console.error("Não foi possível atualizar a biblioteca de cores:", e);
   }
 }
 
@@ -915,6 +974,10 @@ function runSave(){
   const isGrad = analysis && analysis.type==="gradient";
   const aco = isGrad ? $("aco").value.trim() : "";
   const transMm = isGrad ? $("transMm").value.trim() : "";
+  if(chosenMatch && analysis){
+    const measured = isGrad ? analysis.bands[4].rgb : analysis.solid.rgb;
+    updateLibraryHit(chosenMatch, measured);   // grava em segundo plano; não atrasa o PDF
+  }
   try{ localStorage.setItem("lens_last_sao", sao); }catch(e){}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:"pt",format:"a4"});
