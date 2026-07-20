@@ -926,11 +926,16 @@ function showResults(){
 /* ---------- apply / clear a user-selected match over the detected color ----------
    For SOLID lenses, picking a similar lens replaces the displayed swatch and
    stats. The chosen color is also what goes into the PDF. */
+function codeSuffix(m){
+  if(m.farb) return " — FARB "+m.farb;
+  if(m.sku)  return " — SKU "+m.sku;
+  return "";
+}
 function effectiveSolid(){
   // returns {rgb, vlt} to use everywhere (chosen if any, else measured)
   if(chosenMatch){
     const v = Math.round((chosenMatch.vlt[0]+chosenMatch.vlt[1])/2);
-    return { rgb: chosenMatch.rgb.slice(), vlt: v, name: chosenMatch.name, farb: chosenMatch.farb||null, grad: chosenMatch.grad||null };
+    return { rgb: chosenMatch.rgb.slice(), vlt: v, name: chosenMatch.name, farb: chosenMatch.farb||null, sku: chosenMatch.sku||null, grad: chosenMatch.grad||null };
   }
   return { rgb: analysis.solid.rgb, vlt: analysis.solid.vlt, name: null, farb: null, grad: null };
 }
@@ -938,7 +943,7 @@ function applyChosenColor(){
   if(lensType!=="solid"){ // for gradient we only note the choice, swatch stays
     const note=$("colorSource");
     if(note) note.textContent = chosenMatch
-      ? ("Cor escolhida: "+chosenMatch.name+(chosenMatch.farb?(" — FARB "+chosenMatch.farb):""))
+      ? ("Cor escolhida: "+chosenMatch.name+codeSuffix(chosenMatch))
       : "Cor medida da lente.";
     return;
   }
@@ -952,7 +957,7 @@ function applyChosenColor(){
   $("sCat").textContent="Cat "+categoryOf(e.vlt);
   const note=$("colorSource");
   if(note) note.textContent = chosenMatch
-    ? ("Cor escolhida: "+chosenMatch.name+(chosenMatch.farb?(" — FARB "+chosenMatch.farb):"")+" (substitui a medida)")
+    ? ("Cor escolhida: "+chosenMatch.name+codeSuffix(chosenMatch)+" (substitui a medida)")
     : "Cor medida da lente.";
 }
 
@@ -985,13 +990,15 @@ function refreshMatches(){
     if(out.length===3) break;
   }
   const list=$("matchList"); list.innerHTML="";
+  const newRecWrap=$("newRecordWrap");
+  if(newRecWrap) newRecWrap.classList.toggle("hidden", lensType!=="solid");
   if(out.length===0){
     $("matchNote").textContent="Nenhuma cor próxima no banco de dados. O relatório será salvo apenas com a medição.";
   }else{
     $("matchNote").textContent="Cores semelhantes encontradas (não é obrigatório escolher).";
     out.forEach(m=>{
       const el=document.createElement("div"); el.className="match";
-      const nmeDisplay = m.farb ? `${m.name} — FARB ${m.farb}` : m.name;
+      const nmeDisplay = m.name + codeSuffix(m);
       const gradLine = m.grad
         ? `<div class="ds">Degradê (ref.): escuro VLT ${m.grad.darkVlt}% → claro VLT ${m.grad.lightVlt}%</div>`
         : "";
@@ -1019,6 +1026,51 @@ function refreshMatches(){
     });
   }
 }
+
+/* ---------- create a brand-new library record (no good match found) ----------
+   Lets the user register the just-measured color under a new FARB code or
+   sunglass SKU. The measured RGB/VLT become the entry's starting values
+   (hitCount:1), and every future confirmed match against it will keep
+   improving it via the same weighted-average update as any other entry. */
+$("btnNewRecord").addEventListener("click", ()=>{
+  const f=$("newRecordForm");
+  if(f) f.classList.toggle("hidden");
+  $("newRecStatus").textContent="";
+});
+
+$("btnSaveNewRecord").addEventListener("click", async ()=>{
+  const status=$("newRecStatus");
+  status.textContent="";
+  if(!window.fsDB){ status.textContent="Biblioteca indisponível no momento (sem conexão)."; return; }
+  if(!analysis || lensType!=="solid"){ status.textContent="Cadastro disponível apenas para lentes sólidas por enquanto."; return; }
+  const type=$("newRecType").value;               // "farb" | "sku"
+  const code=$("newRecCode").value.trim();
+  const name=$("newRecName").value.trim();
+  if(!code){ status.textContent="Informe o código FARB ou o SKU."; return; }
+
+  const id = (type==="farb" ? "farb_" : "sku_") + slugify(code);
+  status.textContent="Salvando…";
+  try{
+    const col = window.fsDB.collection("lentes");
+    const docRef = col.doc(id);
+    const existing = await docRef.get();
+    if(existing.exists){
+      status.textContent="Esse código já existe na biblioteca. Use a lista de cores semelhantes acima para confirmá-lo, em vez de cadastrar de novo.";
+      return;
+    }
+    const rgb = analysis.solid.rgb.slice();
+    const vlt = [analysis.solid.vlt, analysis.solid.vlt];
+    const entry = { name: name || (type==="farb" ? ("FARB "+code) : code), rgb, vlt, hitCount:1 };
+    if(type==="farb") entry.farb=code; else entry.sku=code;
+    await docRef.set(entry);
+    DB.push({...entry, id});
+    status.textContent="Novo registro salvo na biblioteca!";
+    $("newRecCode").value=""; $("newRecName").value="";
+    refreshMatches();
+  }catch(e){
+    status.textContent="Erro ao salvar: "+(e && e.message ? e.message : e);
+  }
+});
 
 /* ---------- save ---------- */
 $("sao").addEventListener("input",validateSave);

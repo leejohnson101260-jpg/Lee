@@ -33,7 +33,7 @@
   <p class="hint">Fotografe a lente sozinha (sem armação) sobre fundo branco. Mais de uma foto melhora a precisão.</p>
   <p class="hint err" id="capStatus"></p>
   <p class="hint" id="verLine" style="text-align:center;opacity:0.55;margin-top:24px;">
-    Amostra de Cor Digital · v13 <span id="calDot" style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border:1px solid #c8d4b0;border-radius:50%;cursor:pointer;">•</span>
+    Amostra de Cor Digital · v14 <span id="calDot" style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border:1px solid #c8d4b0;border-radius:50%;cursor:pointer;">•</span>
   </p>
 </section>
 
@@ -122,6 +122,20 @@
     <h3>Cores semelhantes</h3>
     <div id="matchList"></div>
     <p class="note" id="matchNote"></p>
+
+    <div id="newRecordWrap" style="margin-top:14px;">
+      <button class="ghost" id="btnNewRecord">+ Cadastrar nova cor / SKU</button>
+      <div id="newRecordForm" class="hidden" style="margin-top:10px;">
+        <select id="newRecType" style="width:100%;margin-bottom:8px;">
+          <option value="farb">Código FARB (ZEISS)</option>
+          <option value="sku">SKU (óculos de sol)</option>
+        </select>
+        <input type="text" id="newRecCode" placeholder="Código (ex: 512 ou RB2140-901)" style="width:100%;margin-bottom:8px;">
+        <input type="text" id="newRecName" placeholder="Nome/descrição (opcional)" style="width:100%;margin-bottom:8px;">
+        <button id="btnSaveNewRecord">Salvar novo registro</button>
+        <p class="note" id="newRecStatus"></p>
+      </div>
+    </div>
   </div>
 
   <div class="toolbar">
