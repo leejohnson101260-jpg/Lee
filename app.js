@@ -1031,7 +1031,28 @@ function refreshMatches(){
    Lets the user register the just-measured color under a new FARB code or
    sunglass SKU. The measured RGB/VLT become the entry's starting values
    (hitCount:1), and every future confirmed match against it will keep
-   improving it via the same weighted-average update as any other entry. */
+   improving it via the same weighted-average update as any other entry.
+
+   For sunglasses, instead of asking the user to retype the whole string
+   stamped on the temple arm (which they don't know how to parse), the
+   fields are broken out to match what's actually printed there — e.g.
+   "SPS 05Y  58□17  DG0-02G  145  3P" becomes Modelo / Largura da lente /
+   Ponte / Código de cor / Largura da haste / Cód. produção. Only Modelo +
+   Código de cor are used as the record's identity (they're what repeats
+   across every pair of that color); the rest are physical/batch details
+   captured for reference but not needed to tell one color from another. */
+let newRecType = "farb";   // "farb" | "sku"
+function setNewRecType(t){
+  newRecType = t;
+  $("segFarb").classList.toggle("ghost", t!=="farb");
+  $("segSku").classList.toggle("ghost", t!=="sku");
+  $("farbFields").classList.toggle("hidden", t!=="farb");
+  $("skuFields").classList.toggle("hidden", t!=="sku");
+  $("newRecStatus").textContent="";
+}
+$("segFarb").addEventListener("click", ()=>setNewRecType("farb"));
+$("segSku").addEventListener("click", ()=>setNewRecType("sku"));
+
 $("btnNewRecord").addEventListener("click", ()=>{
   const f=$("newRecordForm");
   if(f) f.classList.toggle("hidden");
@@ -1043,12 +1064,32 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
   status.textContent="";
   if(!window.fsDB){ status.textContent="Biblioteca indisponível no momento (sem conexão)."; return; }
   if(!analysis || lensType!=="solid"){ status.textContent="Cadastro disponível apenas para lentes sólidas por enquanto."; return; }
-  const type=$("newRecType").value;               // "farb" | "sku"
-  const code=$("newRecCode").value.trim();
-  const name=$("newRecName").value.trim();
-  if(!code){ status.textContent="Informe o código FARB ou o SKU."; return; }
 
-  const id = (type==="farb" ? "farb_" : "sku_") + slugify(code);
+  const name=$("newRecName").value.trim();
+  let id, entry;
+
+  if(newRecType==="farb"){
+    const code=$("newRecFarbCode").value.trim();
+    if(!code){ status.textContent="Informe o código FARB."; return; }
+    id = "farb_"+slugify(code);
+    entry = { name: name || ("FARB "+code), farb: code };
+  }else{
+    const modelo=$("skuModelo").value.trim();
+    const cor=$("skuCor").value.trim();
+    const lenteLargura=$("skuLenteLargura").value.trim();
+    const ponte=$("skuPonte").value.trim();
+    const hasteLargura=$("skuHasteLargura").value.trim();
+    const producao=$("skuProducao").value.trim();
+    if(!modelo || !cor){ status.textContent="Informe pelo menos o Modelo e o Código de cor."; return; }
+    const sku = modelo+" "+cor;   // the identifying key: model + color code
+    id = "sku_"+slugify(sku);
+    entry = {
+      name: name || sku,
+      sku,
+      skuDetails: { modelo, lenteLargura, ponte, cor, hasteLargura, producao }
+    };
+  }
+
   status.textContent="Salvando…";
   try{
     const col = window.fsDB.collection("lentes");
@@ -1058,14 +1099,14 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
       status.textContent="Esse código já existe na biblioteca. Use a lista de cores semelhantes acima para confirmá-lo, em vez de cadastrar de novo.";
       return;
     }
-    const rgb = analysis.solid.rgb.slice();
-    const vlt = [analysis.solid.vlt, analysis.solid.vlt];
-    const entry = { name: name || (type==="farb" ? ("FARB "+code) : code), rgb, vlt, hitCount:1 };
-    if(type==="farb") entry.farb=code; else entry.sku=code;
+    entry.rgb = analysis.solid.rgb.slice();
+    entry.vlt = [analysis.solid.vlt, analysis.solid.vlt];
+    entry.hitCount = 1;
     await docRef.set(entry);
     DB.push({...entry, id});
     status.textContent="Novo registro salvo na biblioteca!";
-    $("newRecCode").value=""; $("newRecName").value="";
+    ["newRecFarbCode","skuModelo","skuLenteLargura","skuPonte","skuCor","skuHasteLargura","skuProducao","newRecName"]
+      .forEach(fid=>{ const el=$(fid); if(el) el.value=""; });
     refreshMatches();
   }catch(e){
     status.textContent="Erro ao salvar: "+(e && e.message ? e.message : e);
