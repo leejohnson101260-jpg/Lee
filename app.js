@@ -114,6 +114,7 @@ let img = null;
 let off = null;                       // {w,h,f,data}: offscreen pixels, f = off px per image px
 let view = {scale:1, ox:0, oy:0};
 let outline = [];                     // lens outline, IMAGE coords
+let capturedImages = [];               // multi-photo: raw images from the last capture
 let traced = false;
 let lensType = "solid";
 let analysis = null;
@@ -484,22 +485,59 @@ $("drop").addEventListener("click", ()=> $("file").click());
 $("file").addEventListener("change", e=>{
   const status=$("capStatus");
   status.textContent="";
-  const f = e.target.files && e.target.files[0];
-  if(!f){ status.textContent="Nenhum arquivo selecionado."; return; }
-  status.textContent="Carregando imagem…";
-  const reader=new FileReader();
-  reader.onerror=()=>{ status.textContent="Erro ao ler o arquivo. Tente outra foto."; };
-  reader.onload=()=>{
-    const im=new Image();
-    im.onload=()=>{
-      if(!im.width||!im.height){ status.textContent="Imagem inválida (0 px). Tente outra foto."; return; }
-      img=im; status.textContent=""; enterIsolate();
-    };
-    im.onerror=()=>{ status.textContent="Não foi possível abrir a imagem. Use JPG ou PNG (HEIC pode falhar)."; };
-    im.src=reader.result;
-  };
-  reader.readAsDataURL(f);
+  const files = Array.from(e.target.files || []);
+  if(!files.length){ status.textContent="Nenhum arquivo selecionado."; return; }
+  const capped = files.slice(0,4);   // até 4 fotos por leitura
+  status.textContent = capped.length>1 ? `Carregando ${capped.length} imagens…` : "Carregando imagem…";
+  Promise.all(capped.map(loadImageFile)).then(images=>{
+    const ok = images.filter(Boolean);
+    if(!ok.length){ status.textContent="Não foi possível abrir as imagens. Use JPG ou PNG (HEIC pode falhar)."; return; }
+    status.textContent="";
+    startCapture(ok);
+  });
 });
+
+function loadImageFile(f){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onerror=()=>resolve(null);
+    reader.onload=()=>{
+      const im=new Image();
+      im.onload=()=>{ (!im.width||!im.height) ? resolve(null) : resolve(im); };
+      im.onerror=()=>resolve(null);
+      im.src=reader.result;
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+/* Entry point for one or more photos. Tries automatic detection on every
+   photo; photos where the lens isn't found are quietly dropped. If at
+   least one photo was read automatically, we go straight to results
+   (combining readings by median — see finalizeAnalysis). Only if EVERY
+   photo fails automatic detection do we fall back to the manual
+   trace-and-adjust screen, using the first photo, exactly as before. */
+function startCapture(images){
+  capturedImages = images;
+  const cores=[];
+  for(const im of images){
+    const offX = buildOffscreenFor(im);
+    const outlineX = autoTraceOnly(offX);
+    if(!outlineX) continue;
+    const core = computeAnalysisCore(offX, outlineX);
+    if(core) cores.push(core);
+  }
+  if(cores.length>0){
+    analysis = finalizeAnalysis(cores);
+    lensType = analysis.type;
+    img = images[0];
+    $("step-capture").classList.add("hidden");
+    showResults();
+    return;
+  }
+  img = images[0];
+  enterIsolate();
+}
 
 /* ============================================================
    STEP 2 — trace & adjust
@@ -537,14 +575,37 @@ function layoutCanvas(){
   cv.height = Math.round(cssH);
 }
 
-function buildOffscreen(){
+function buildOffscreenFor(image){
   const maxW=1000;
-  const f=Math.min(1, maxW/Math.max(img.width,img.height));
-  const w=Math.max(1,Math.round(img.width*f)), h=Math.max(1,Math.round(img.height*f));
+  const f=Math.min(1, maxW/Math.max(image.width,image.height));
+  const w=Math.max(1,Math.round(image.width*f)), h=Math.max(1,Math.round(image.height*f));
   const oc=document.createElement("canvas");oc.width=w;oc.height=h;
   const octx=oc.getContext("2d",{willReadFrequently:true});
-  octx.drawImage(img,0,0,w,h);
-  off={w,h,f,data:octx.getImageData(0,0,w,h).data};
+  octx.drawImage(image,0,0,w,h);
+  return {w,h,f,data:octx.getImageData(0,0,w,h).data};
+}
+function buildOffscreen(){ off = buildOffscreenFor(img); }
+
+/* Pure detection for the automatic multi-photo path: returns an outline
+   in image coordinates, or null if no lens was found. Unlike autoTrace()
+   (used on the manual adjust screen), this NEVER falls back to a default
+   oval — a photo where detection fails is simply excluded from the
+   automatic reading rather than silently sampling the wrong area. */
+function autoTraceOnly(offX){
+  const tw=Math.min(offX.w,320), tf=tw/offX.w, th=Math.max(1,Math.round(offX.h*tf));
+  const tdata=new Uint8ClampedArray(tw*th*4);
+  for(let y=0;y<th;y++){
+    const sy=Math.min(offX.h-1,Math.round(y/tf));
+    for(let x=0;x<tw;x++){
+      const sx=Math.min(offX.w-1,Math.round(x/tf));
+      const si=(sy*offX.w+sx)*4, di=(y*tw+x)*4;
+      tdata[di]=offX.data[si];tdata[di+1]=offX.data[si+1];tdata[di+2]=offX.data[si+2];tdata[di+3]=255;
+    }
+  }
+  const pts=traceLens(tdata,tw,th);
+  if(!pts) return null;
+  const g=1/(tf*offX.f);
+  return pts.map(p=>({x:p.x*g,y:p.y*g}));
 }
 
 function autoTrace(){
@@ -742,22 +803,39 @@ function rgbToCmyk(c){
   return [C,M,Y,k].map(v=>Math.round(v*100));
 }
 
-function analyze(){
-  const bands=samplePolyBands(off.data,off.w,off.h,off.f,outline);
+/* Raw per-photo measurement: 10 raw band RGBs + their background-normalized
+   VLTs, before calibration and before combining across photos. Returns
+   null if too little of the outline landed on readable lens area. */
+function computeAnalysisCore(offX, outlineX){
+  const bands=samplePolyBands(offX.data,offX.w,offX.h,offX.f,outlineX);
   const valid=bands.filter(Boolean);
-  if(valid.length<6){
-    alert("Não foi possível ler a lente. Ajuste o contorno sobre a área colorida e tente novamente.");
-    return;
-  }
+  if(valid.length<6) return null;
   for(let i=0;i<10;i++) if(!bands[i]){ bands[i]=valid[Math.min(i,valid.length-1)]; }
 
   // local background per band — a varying surface behind a translucent
   // lens must NOT be read as a tint gradient
-  const prof = bgLumProfile(off.data,off.w,off.h,off.f,outline);
+  const prof = bgLumProfile(offX.data,offX.w,offX.h,offX.f,outlineX);
   const bgOf = i => prof.perBand[i] || prof.global;
 
   // background-normalized transmission per band (true tint profile)
   const vlts = bands.map((b,i)=>vltFromRgb(b,bgOf(i)));
+
+  return { bandsRaw:bands, vlts, bgLum:prof.global };
+}
+
+/* Combines one or more per-photo cores into a final analysis. With a
+   single core (manual single-photo path) this reproduces the original
+   single-photo math exactly. With several cores (automatic multi-photo
+   path) each band's RGB and VLT is the per-channel MEDIAN across photos —
+   this is what naturally throws out a glare- or shadow-heavy outlier
+   photo instead of letting it skew the reading. */
+function finalizeAnalysis(cores){
+  const med=arr=>{ const s=arr.slice().sort((a,b)=>a-b); return s[s.length>>1]; };
+  const bandsRgb=[], vlts=[];
+  for(let i=0;i<10;i++){
+    bandsRgb.push([0,1,2].map(ch=>med(cores.map(c=>c.bandsRaw[i][ch]))));
+    vlts.push(med(cores.map(c=>c.vlts[i])));
+  }
 
   // A true gradient: normalized VLT climbs SMOOTHLY and MONOTONICALLY
   // top→bottom by >= 30 points. Reflections or background changes cause
@@ -767,18 +845,28 @@ function analyze(){
   const isGradient = (vlts[9]-vlts[0]) >= 30 && inversions<=1;
 
   const solid=[0,1,2].map(ch=>{
-    const s=bands.map(b=>b[ch]).sort((a,b)=>a-b); return s[5];
+    const s=bandsRgb.map(b=>b[ch]).sort((a,b)=>a-b); return s[5];
   });
   const solidCal = calRgb(solid);
   const solidVlt = vlts.slice().sort((a,b)=>a-b)[5];   // median of band VLTs
 
-  analysis={
-    bands: bands.map((b,i)=>({rgb:calRgb(b), vlt:vlts[i]})),
+  return {
+    bands: bandsRgb.map((b,i)=>({rgb:calRgb(b), vlt:vlts[i]})),
     solid:{rgb:solidCal, vlt:solidVlt},
-    bgLum:prof.global,
-    type: isGradient?"gradient":"solid"
+    bgLum: med(cores.map(c=>c.bgLum)),
+    type: isGradient?"gradient":"solid",
+    photoCount: cores.length
   };
-  lensType=analysis.type;
+}
+
+function analyze(){
+  const core = computeAnalysisCore(off, outline);
+  if(!core){
+    alert("Não foi possível ler a lente. Ajuste o contorno sobre a área colorida e tente novamente.");
+    return;
+  }
+  analysis = finalizeAnalysis([core]);
+  lensType = analysis.type;
   showResults();
 }
 
@@ -794,6 +882,11 @@ function showResults(){
   $("typeLabel").textContent = isGrad
     ? `DEGRADÊ detectado — Δ ${diff} pontos de VLT (topo escuro → base clara)`
     : "LENTE SÓLIDA detectada";
+  const pn=$("photoNote");
+  if(pn){
+    const n=analysis.photoCount||1;
+    pn.textContent = n>1 ? `Baseado em ${n} fotos (mediana entre elas).` : "Baseado em 1 foto.";
+  }
   $("solidBox").classList.toggle("hidden", isGrad);
   $("gradBox").classList.toggle("hidden", !isGrad);
   $("transWrap").classList.toggle("hidden", !isGrad);
@@ -1189,7 +1282,7 @@ function runSave(){
 }
 
 $("btnRestart").addEventListener("click",()=>{
-  analysis=null; img=null; off=null; outline=[]; $("file").value="";
+  analysis=null; img=null; off=null; outline=[]; capturedImages=[]; $("file").value="";
   { const v=document.getElementById("pdfView"); if(v){ v.classList.add("hidden"); v.innerHTML=""; } }
   $("step-results").classList.add("hidden");
   $("step-isolate").classList.add("hidden");

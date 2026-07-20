@@ -24,15 +24,16 @@
 <section id="step-capture">
   <div class="drop" id="drop">
     <div class="icon">📷</div>
-    <h2>TIRAR FOTO OU ENVIAR</h2>
+    <h2>TIRAR FOTOS OU ENVIAR</h2>
     <p>Coloque a lente FORA da armação, sobre uma superfície branca e plana</p>
-    <p>Toque novamente para trocar a imagem</p>
+    <p>Selecione 2 a 3 fotos da mesma lente (ângulos ligeiramente diferentes ajudam)</p>
+    <p>Toque novamente para trocar as imagens</p>
   </div>
-  <input type="file" id="file" accept="image/*" class="hidden">
-  <p class="hint">Fotografe a lente sozinha (sem armação) sobre fundo branco para começar</p>
+  <input type="file" id="file" accept="image/*" multiple class="hidden">
+  <p class="hint">Fotografe a lente sozinha (sem armação) sobre fundo branco. Mais de uma foto melhora a precisão.</p>
   <p class="hint err" id="capStatus"></p>
   <p class="hint" id="verLine" style="text-align:center;opacity:0.55;margin-top:24px;">
-    Amostra de Cor Digital · v12 <span id="calDot" style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border:1px solid #c8d4b0;border-radius:50%;cursor:pointer;">•</span>
+    Amostra de Cor Digital · v13 <span id="calDot" style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border:1px solid #c8d4b0;border-radius:50%;cursor:pointer;">•</span>
   </p>
 </section>
 
@@ -60,6 +61,7 @@
   <div class="card">
     <h3>Resultado</h3>
     <div class="typebox" id="typeLabel">—</div>
+    <p class="note" id="photoNote" style="margin-top:-6px;opacity:0.7;"></p>
     <div id="solidBox">
       <div class="swatch" id="solidSwatch"></div>
       <div class="note" id="colorSource" style="margin-top:8px;">Cor medida da lente.</div>
