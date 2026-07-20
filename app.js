@@ -991,7 +991,7 @@ function refreshMatches(){
   }
   const list=$("matchList"); list.innerHTML="";
   const newRecWrap=$("newRecordWrap");
-  if(newRecWrap) newRecWrap.classList.toggle("hidden", lensType!=="solid");
+  if(newRecWrap) newRecWrap.classList.remove("hidden");   // available for solid and gradient alike
   if(out.length===0){
     $("matchNote").textContent="Nenhuma cor próxima no banco de dados. O relatório será salvo apenas com a medição.";
   }else{
@@ -1063,7 +1063,8 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
   const status=$("newRecStatus");
   status.textContent="";
   if(!window.fsDB){ status.textContent="Biblioteca indisponível no momento (sem conexão)."; return; }
-  if(!analysis || lensType!=="solid"){ status.textContent="Cadastro disponível apenas para lentes sólidas por enquanto."; return; }
+  if(!analysis){ status.textContent="Nenhuma leitura de lente disponível."; return; }
+  const isGrad = lensType==="gradient";
 
   const name=$("newRecName").value.trim();
   let id, entry;
@@ -1099,8 +1100,22 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
       status.textContent="Esse código já existe na biblioteca. Use a lista de cores semelhantes acima para confirmá-lo, em vez de cadastrar de novo.";
       return;
     }
-    entry.rgb = analysis.solid.rgb.slice();
-    entry.vlt = [analysis.solid.vlt, analysis.solid.vlt];
+    if(isGrad){
+      // Center band represents the entry's headline rgb/vlt, matching the
+      // convention already used by the ZEISS gradient rows in the library;
+      // top/bottom bands capture the dark→light range for reference.
+      entry.rgb = analysis.bands[4].rgb.slice();
+      entry.vlt = [analysis.bands[4].vlt, analysis.bands[4].vlt];
+      entry.grad = {
+        darkVlt: analysis.bands[0].vlt,
+        lightVlt: analysis.bands[9].vlt,
+        darkRgb: analysis.bands[0].rgb.slice(),
+        lightRgb: analysis.bands[9].rgb.slice()
+      };
+    }else{
+      entry.rgb = analysis.solid.rgb.slice();
+      entry.vlt = [analysis.solid.vlt, analysis.solid.vlt];
+    }
     entry.hitCount = 1;
     await docRef.set(entry);
     DB.push({...entry, id});
