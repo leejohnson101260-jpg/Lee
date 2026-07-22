@@ -1033,14 +1033,13 @@ function refreshMatches(){
    (hitCount:1), and every future confirmed match against it will keep
    improving it via the same weighted-average update as any other entry.
 
-   For sunglasses, instead of asking the user to retype the whole string
-   stamped on the temple arm (which they don't know how to parse), the
-   fields are broken out to match what's actually printed there — e.g.
-   "SPS 05Y  58□17  DG0-02G  145  3P" becomes Modelo / Largura da lente /
-   Ponte / Código de cor / Largura da haste / Cód. produção. Only Modelo +
-   Código de cor are used as the record's identity (they're what repeats
-   across every pair of that color); the rest are physical/batch details
-   captured for reference but not needed to tell one color from another. */
+   For sunglasses, only two fields are asked for: Modelo and Código de cor.
+   These are the only parts of the temple-arm stamp that repeat across
+   every pair of that color and are therefore what identifies a color —
+   the lens width, ponte, haste width, and production code are batch/
+   physical details that vary pair-to-pair and aren't needed here. Both
+   fields are auto-uppercased as the user types, since codes are always
+   printed in caps. */
 let newRecType = "farb";   // "farb" | "sku"
 function setNewRecType(t){
   newRecType = t;
@@ -1052,6 +1051,19 @@ function setNewRecType(t){
 }
 $("segFarb").addEventListener("click", ()=>setNewRecType("farb"));
 $("segSku").addEventListener("click", ()=>setNewRecType("sku"));
+
+// Auto-uppercase code fields as the user types (codes are always printed
+// in caps; typing them consistently avoids duplicate library entries that
+// differ only by case, e.g. "dg0-02g" vs "DG0-02G").
+["newRecFarbCode","skuModelo","skuCor"].forEach(fid=>{
+  const el=$(fid);
+  if(!el) return;
+  el.addEventListener("input", ()=>{
+    const pos=el.selectionStart;
+    el.value=el.value.toUpperCase();
+    if(pos!=null) el.setSelectionRange(pos,pos);
+  });
+});
 
 $("btnNewRecord").addEventListener("click", ()=>{
   const f=$("newRecordForm");
@@ -1075,20 +1087,12 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
     id = "farb_"+slugify(code);
     entry = { name: name || ("FARB "+code), farb: code };
   }else{
-    const modelo=$("skuModelo").value.trim();
-    const cor=$("skuCor").value.trim();
-    const lenteLargura=$("skuLenteLargura").value.trim();
-    const ponte=$("skuPonte").value.trim();
-    const hasteLargura=$("skuHasteLargura").value.trim();
-    const producao=$("skuProducao").value.trim();
-    if(!modelo || !cor){ status.textContent="Informe pelo menos o Modelo e o Código de cor."; return; }
+    const modelo=$("skuModelo").value.trim().toUpperCase();
+    const cor=$("skuCor").value.trim().toUpperCase();
+    if(!modelo || !cor){ status.textContent="Informe o Modelo e o Código de cor."; return; }
     const sku = modelo+" "+cor;   // the identifying key: model + color code
     id = "sku_"+slugify(sku);
-    entry = {
-      name: name || sku,
-      sku,
-      skuDetails: { modelo, lenteLargura, ponte, cor, hasteLargura, producao }
-    };
+    entry = { name: name || sku, sku };
   }
 
   status.textContent="Salvando…";
@@ -1120,7 +1124,7 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
     await docRef.set(entry);
     DB.push({...entry, id});
     status.textContent="Novo registro salvo na biblioteca!";
-    ["newRecFarbCode","skuModelo","skuLenteLargura","skuPonte","skuCor","skuHasteLargura","skuProducao","newRecName"]
+    ["newRecFarbCode","skuModelo","skuCor","newRecName"]
       .forEach(fid=>{ const el=$(fid); if(el) el.value=""; });
     refreshMatches();
   }catch(e){
