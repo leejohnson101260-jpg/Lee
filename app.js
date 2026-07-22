@@ -1533,5 +1533,32 @@ loadDB();
       const out=$("calOut"); if(out){ out.classList.add("hidden"); out.value=""; }
       $("calMeasured").textContent="Amostras apagadas.";
     });
+
+    const delSkus=$("btnDeleteSkus");
+    delSkus && delSkus.addEventListener("click", async ()=>{
+      const status=$("skuDeleteStatus");
+      if(!window.fsDB){ status.textContent="Sem conexão com a biblioteca agora — tente novamente com internet."; return; }
+      status.textContent="Verificando registros…";
+      let snap;
+      try{ snap = await window.fsDB.collection("lentes").get(); }
+      catch(e){ status.textContent="Erro ao consultar: "+(e&&e.message?e.message:e); return; }
+      // A SKU record is identified by id prefix "sku_" or by having a "sku" field;
+      // FARB records (id prefix "farb_") are left untouched either way.
+      const skuDocs = snap.docs.filter(d => d.id.startsWith("sku_") || !!(d.data() && d.data().sku));
+      if(skuDocs.length===0){ status.textContent="Nenhum registro SKU encontrado na biblioteca."; return; }
+      const ok = confirm("Isto vai apagar "+skuDocs.length+" registro(s) SKU da biblioteca compartilhada, em TODOS os aparelhos. Os códigos FARB da ZEISS não serão afetados. Esta ação não pode ser desfeita. Confirma?");
+      if(!ok){ status.textContent="Cancelado. Nada foi apagado."; return; }
+      status.textContent="Apagando "+skuDocs.length+" registro(s)…";
+      try{
+        const batch = window.fsDB.batch();
+        skuDocs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        const deletedIds = new Set(skuDocs.map(d=>d.id));
+        for(let i=DB.length-1;i>=0;i--){ if(deletedIds.has(DB[i].id)) DB.splice(i,1); }
+        status.textContent=skuDocs.length+" registro(s) SKU apagado(s). Os FARB continuam intactos. Pode cadastrar os SKUs de novo quando quiser.";
+      }catch(e){
+        status.textContent="Erro ao apagar: "+(e&&e.message?e.message:e);
+      }
+    });
   });
 })();
