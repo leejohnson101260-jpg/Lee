@@ -1107,10 +1107,7 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
     const col = window.fsDB.collection("lentes");
     const docRef = col.doc(id);
     const existing = await docRef.get();
-    if(existing.exists){
-      status.textContent="Esse código já existe na biblioteca. Use a lista de cores semelhantes acima para confirmá-lo, em vez de cadastrar de novo.";
-      return;
-    }
+
     if(isGrad){
       // Center band represents the entry's headline rgb/vlt, matching the
       // convention already used by the ZEISS gradient rows in the library;
@@ -1127,10 +1124,48 @@ $("btnSaveNewRecord").addEventListener("click", async ()=>{
       entry.rgb = analysis.solid.rgb.slice();
       entry.vlt = [analysis.solid.vlt, analysis.solid.vlt];
     }
-    entry.hitCount = 1;
-    await docRef.set(entry);
-    DB.push({...entry, id});
-    status.textContent="Novo registro salvo na biblioteca!";
+
+    if(existing.exists){
+      // Same SKU/FARB code scanned again: fold this measurement into the
+      // existing entry's running average instead of blocking the save.
+      // Every repeat scan makes the stored color a little more accurate.
+      const prev = existing.data();
+      const hc = prev.hitCount || 1;
+      const avgRgb = prev.rgb.map((c,i)=>Math.round((c*hc + entry.rgb[i])/(hc+1)));
+      const prevVltMid = (prev.vlt[0]+prev.vlt[1])/2, newVltMid=(entry.vlt[0]+entry.vlt[1])/2;
+      const avgVltMid = Math.round((prevVltMid*hc + newVltMid)/(hc+1));
+      const update = { rgb: avgRgb, vlt:[avgVltMid, avgVltMid], hitCount: hc+1 };
+      let clearedGrad=false;
+
+      if(isGrad){
+        const pg = prev.grad; // may be missing if the old entry was mis-saved as solid
+        update.grad = {
+          darkVlt:  Math.round(((pg?pg.darkVlt:entry.grad.darkVlt)*hc + entry.grad.darkVlt)/(hc+1)),
+          lightVlt: Math.round(((pg?pg.lightVlt:entry.grad.lightVlt)*hc + entry.grad.lightVlt)/(hc+1)),
+          darkRgb:  (pg?pg.darkRgb:entry.grad.darkRgb).map((c,i)=>Math.round((c*hc+entry.grad.darkRgb[i])/(hc+1))),
+          lightRgb: (pg?pg.lightRgb:entry.grad.lightRgb).map((c,i)=>Math.round((c*hc+entry.grad.lightRgb[i])/(hc+1)))
+        };
+      } else if(prev.grad){
+        // This scan reads solid on an entry that was previously stored as
+        // gradient — likely the earlier, over-eager gradient detector.
+        // The corrected reading wins; drop the stale gradient data.
+        update.grad = firebase.firestore.FieldValue.delete();
+        clearedGrad=true;
+      }
+
+      await docRef.update(update);
+      const dbUpdate = {...update};
+      if(clearedGrad) dbUpdate.grad = null; else if(!update.grad) delete dbUpdate.grad;
+      const idx = DB.findIndex(d=>d.id===id);
+      if(idx>=0) DB[idx]={...DB[idx], ...dbUpdate}; else DB.push({...prev, ...dbUpdate, id});
+      status.textContent=`Código já existia — medição combinada com a média da biblioteca (agora com ${hc+1} leituras).`;
+    }else{
+      entry.hitCount = 1;
+      await docRef.set(entry);
+      DB.push({...entry, id});
+      status.textContent="Novo registro salvo na biblioteca!";
+    }
+
     ["newRecFarbCode","skuModelo","skuCor","newRecName"]
       .forEach(fid=>{ const el=$(fid); if(el) el.value=""; });
     refreshMatches();
