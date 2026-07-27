@@ -1,6 +1,6 @@
 /* Service worker — caches the app so it works offline once visited.
    Bump CACHE when you change any file, so phones fetch the new version. */
-const CACHE = "amostra-v19";
+const CACHE = "amostra-v20";
 const ASSETS = [
   "./",
   "./index.html",

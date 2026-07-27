@@ -842,7 +842,11 @@ function finalizeAnalysis(cores){
   // reversals or are cancelled by the per-band normalization.
   let inversions=0;
   for(let i=0;i<9;i++){ if(vlts[i+1] < vlts[i]-4) inversions++; }
-  const isGradient = (vlts[9]-vlts[0]) >= 30 && inversions<=1;
+  // Default assumption is SOLID: lighting near the bottom of the lens can
+  // make band 9 read artificially bright, mimicking a gradient's climb.
+  // A genuine degradê fades to near-clear at its lightest point, so we only
+  // trust the gradient call when that lightest band is actually > 75% VLT.
+  const isGradient = (vlts[9]-vlts[0]) >= 30 && inversions<=1 && vlts[9] > 75;
 
   const solid=[0,1,2].map(ch=>{
     const s=bandsRgb.map(b=>b[ch]).sort((a,b)=>a-b); return s[5];
@@ -971,7 +975,10 @@ function refreshMatches(){
   const tLab=rgbToLab(target);
   const tHue=hueOf(target[0],target[1],target[2]);
   const tSat=(()=>{const mx=Math.max(...target),mn=Math.min(...target);return mx?(mx-mn)/mx:0;})();
-  const scored=DB.map(d=>{
+  // Only suggest entries of the same type as the lens being read: a solid
+  // lens should never be offered a degradê match and vice-versa.
+  const typePool = lensType==="gradient" ? DB.filter(d=>!!d.grad) : DB.filter(d=>!d.grad);
+  const scored=typePool.map(d=>{
     const de=deltaE(tLab,rgbToLab(d.rgb));
     const dvlt=(d.vlt[0]+d.vlt[1])/2;
     const vd=Math.abs(tVlt-dvlt);
@@ -1000,7 +1007,7 @@ function refreshMatches(){
       const el=document.createElement("div"); el.className="match";
       const nmeDisplay = m.name + codeSuffix(m);
       const gradLine = m.grad
-        ? `<div class="ds">Degradê (ref.): escuro VLT ${m.grad.darkVlt}% → claro VLT ${m.grad.lightVlt}%</div>`
+        ? `<div class="ds">Degradê (ref.): escuro ${m.grad.darkRgb?rgbToHex(m.grad.darkRgb)+" · ":""}VLT ${m.grad.darkVlt}% → claro ${m.grad.lightRgb?rgbToHex(m.grad.lightRgb)+" · ":""}VLT ${m.grad.lightVlt}%</div>`
         : "";
       el.innerHTML=`<span class="chip" style="background:${rgbToHex(m.rgb)}"></span>
         <span><div class="nm">${nmeDisplay}</div>
